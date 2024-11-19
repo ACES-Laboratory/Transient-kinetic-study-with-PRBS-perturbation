@@ -1,0 +1,165 @@
+clear all
+clc
+load('steadyfit.mat')
+yCO2span=fCO2;
+XAexp=CO2exp./(COexp+CO2exp);
+%korder=korder0;
+optionsf=optimset('Display','iter','Algorithm','trust-region-reflective','UseParallel',true,'TolX',1e-8,'MaxFunEvals',100000,'MaxIter',100000,'TolFun',1e-8,'FinDiffRelStep',0.0001);
+ko=[k5step(1:7),k5step(9:10)];
+k0=0.1*ones(1,9);
+%k0=[1e-7,1e-4,1e-4,1e-4,1e-4];
+lb=zeros(1,9);
+ub=ones(1,9)*inf;
+%ub=[ub,10];
+%lb=zeros(1,5);
+%ub=inf*ones(1,5);
+[kfit,renorm, residual,exitflag,output,lambda,J]=lsqnonlin(@(kf)funorderfit(kf,Di,QT,QN,mc,Hb,CT,T,P,void,dp,yCO2span,fCOprofile,fO2profile,XAexp,Rid,Kr),k0,lb,ub,optionsf);
+kfit=real(kfit);
+k5stepf=[kfit(1:7),NaN,kfit(8:9)];
+k5stepf(1)=k5stepf(1)/10^5;
+k5stepf(3)=k5stepf(3)/10^5;
+k5stepf(10)=k5stepf(10)/10^5;
+k5stepf(8)=k5stepf(7)*k5stepf(1)/k5stepf(2)*k5stepf(9)/k5stepf(10)*sqrt(k5stepf(3)/k5stepf(4)*k5stepf(5)/k5stepf(6)/Kr);
+cif=nlparci(kfit,residual,'jacobian',real(J));
+cif(1,:)=cif(1,:)/10^5;
+cif(3,:)=cif(3,:)/10^5;
+cif(9,:)=cif(9,:)/10^5;
+kof=[k5stepf(1:7),k5stepf(9:10)];
+error=kof-ko
+relerror=error./ko
+n=101;
+xspan=linspace(0,Hb,n);
+optionst=bvpset('RelTol',1e-3,'Stats','off');
+yCO2f=yCO2span;
+XAcals=zeros(1,length(fCOprofile)*length(fO2profile));
+XAexps=zeros(1,length(fCOprofile)*length(fO2profile));
+for i=1:length(fCOprofile)
+    for j=1:length(fO2profile)
+      yO2f=fO2profile(j)*QN/QT;
+      yCOf=fCOprofile(i)*QN/QT;
+      solinit=bvpinit(xspan,[CT*yCOf*0.5;CT*yO2f*0.5;0.5;0;0;0;]);
+      sol=bvp5c(@(x,C)odekorder(x,C,Di,QT,mc,Hb,CT,T,P,void,dp,k5stepf,yCO2f,yCOf,yO2f,Rid,Kr),@(Ci,Ce)bcfun(Ci,Ce,CT,yCOf,yO2f,yCO2f),solinit,optionst);
+      CCOp=sol.y(1,:);
+      CCO2p=sol.y(3,:);
+      XAcal=CCO2p(end)/(CCOp(end)+CCO2p(end));
+      XAcals(length(fCOprofile)*(i-1)+j)=XAcal;
+      XAexps(length(fCOprofile)*(i-1)+j)=XAexp(i,j);
+   end
+end
+figure()
+scatter(XAcals,XAexps,72)
+hold on
+plot([min([XAcals,XAexps]) max([XAcals,XAexps])],[min([XAcals,XAexps]) max([XAcals,XAexps])],'LineWidth',1.5)
+xlabel('X_{CO_{fit}}','FontSize',15)
+ylabel('X_{CO_{exp}}','FontSize',15)
+box on;
+hold off
+save('steadyfitmicrokinetic.mat')
+function error=funorderfit(kf,Di,QT,QN,mc,Hb,CT,T,P,void,dp,yCO2span,fCOprofile,fO2profile,XAexp,Rid,Kr)
+n=101;
+xspan=linspace(0,Hb,n);
+optionst=bvpset('RelTol',1e-3,'Stats','off');
+yCO2f=yCO2span;
+kfit=real(kf);
+k5step=[kfit(1:7),NaN,kfit(8:9)];
+k5step(1)=k5step(1)/10^5;
+k5step(3)=k5step(3)/10^5;
+k5step(10)=k5step(10)/10^5;
+k5step(8)=k5step(7)*k5step(1)/k5step(2)*k5step(9)/k5step(10)*sqrt(k5step(3)/k5step(4)*k5step(5)/k5step(6)/Kr);
+error=zeros(1,length(fCOprofile)*length(fO2profile));
+for i=1:length(fCOprofile)
+    for j=1:length(fO2profile)
+       yO2f=fO2profile(j)*QN/QT;
+       yCOf=fCOprofile(i)*QN/QT;
+       solinit=bvpinit(xspan,[CT*yCOf*0.5;CT*yO2f*0.5;0.5;0;0;0]);
+       sol=bvp5c(@(x,C)odekorder(x,C,Di,QT,mc,Hb,CT,T,P,void,dp,k5step,yCO2f,yCOf,yO2f,Rid,Kr),@(Ci,Ce)bcfun(Ci,Ce,CT,yCOf,yO2f,yCO2f),solinit,optionst);
+       CCOp=sol.y(1,:);
+       CCO2p=sol.y(3,:);
+       XAcal=CCO2p(end)/(CCOp(end)+CCO2p(end));
+       error(length(fCOprofile)*(i-1)+j)=real(XAexp(i,j)-XAcal);
+    end
+end
+end
+function dCdx=odekorder(x,C,Di,QT,mc,Hb,CT,T,P,void,dp,k5step,yCO2f,yCOf,yO2f,Rid,Kr)
+CCO=C(1);
+CO2=C(2);
+CCO2=C(3);
+dCCOdx=C(4);
+dCO2dx=C(5);
+dCCO2dx=C(6);
+yCO2=CCO2/CT;
+yCO=CCO/CT;
+yO2=CO2/CT;
+yHe=1-yCO2-yCO-yO2;
+A=pi*Di^2/4;
+densb=mc/(A*Hb);
+us0=QT/A;
+DCO2He=1*10^(-3)*T^1.75*sqrt(1/44+1/4)/(P/101325)/(2.88^(1/3)+26.9^(1/3))^2*10^(-4);
+DCOHe=1*10^(-3)*T^1.75*sqrt(1/28+1/4)/(P/101325)/(2.88^(1/3)+18.9^(1/3))^2*10^(-4);
+DO2He=1*10^(-3)*T^1.75*sqrt(1/32+1/4)/(P/101325)/(2.88^(1/3)+16.6^(1/3))^2*10^(-4);
+DCO2CO=1*10^(-3)*T^1.75*sqrt(1/44+1/28)/(P/101325)/(26.9^(1/3)+18.9^(1/3))^2*10^(-4);
+DCO2O2=1*10^(-3)*T^1.75*sqrt(1/44+1/32)/(P/101325)/(26.9^(1/3)+16.6^(1/3))^2*10^(-4);
+DCOO2=1*10^(-3)*T^1.75*sqrt(1/28+1/32)/(P/101325)/(18.9^(1/3)+16.6^(1/3))^2*10^(-4);
+DCO=(1-yCO)./(yCO2/DCO2CO+yO2/DCOO2+yHe/DCOHe);
+DO2=(1-yO2)./(yCO/DCOO2+yCO2/DCO2O2+yHe/DO2He);
+DCO2=(1-yCO2)./(yCO/DCO2CO+yO2/DCO2O2+yHe/DCO2He);
+us=us0*CT*(1-yCO2f-yCOf-yO2f)./(CT-CCO-CCO2-CO2);
+DLCO=(0.45+0.55*void)*DCO+2*0.5*dp/2*us/void;
+DLO2=(0.45+0.55*void)*DO2+2*0.5*dp/2*us/void;
+DLCO2=(0.45+0.55*void)*DCO2+2*0.5*dp/2*us/void;
+%kenetic
+k1=k5step(1);
+kr1=k5step(2);
+k2=k5step(3);
+kr2=k5step(4);
+k5=k5step(9);
+kr5=k5step(10);
+optionss=optimset('Display','off','Algorithm','trust-region-dogleg');
+theta=fsolve(@(the)slovetheta(the,Rid,T,k5step,CCO,CO2,CCO2),[1,0,0,0,0],optionss);
+thev=theta(1);
+theCOa=theta(2);
+theO2a=theta(3);
+theCO2a=theta(5);
+r1=k1*thev*Rid*T.*CCO-kr1*theCOa;
+r2=k2*thev*Rid*T.*CO2-kr2*theO2a;
+r5=k5*theCO2a-kr5*thev*Rid*T.*CCO2;
+%
+%
+dCdx=zeros(6,1);
+dCdx(1)=dCCOdx;
+dCdx(2)=dCO2dx;
+dCdx(3)=dCCO2dx;
+dCdx(4)=1/DLCO*(us/void*dCCOdx+CCO/void*us/(CT-CCO-CCO2-CO2)*(dCCOdx+dCO2dx+dCCO2dx)+1/void*densb*r1);
+dCdx(5)=1/DLO2*(us/void*dCO2dx+CO2/void*us/(CT-CCO-CCO2-CO2)*(dCCOdx+dCO2dx+dCCO2dx)+1/void*densb*r2);
+dCdx(6)=1/DLCO2*(us/void*dCCO2dx+CCO2/void*us/(CT-CCO-CCO2-CO2)*(dCCOdx+dCO2dx+dCCO2dx)-1/void*densb*r5);
+end
+function res=bcfun(Ci,Ce,CT,yCOf,yO2f,yCO2f)
+res=[Ci(1)-CT*yCOf Ci(2)-CT*yO2f Ci(3)-CT*yCO2f Ce(4) Ce(5) Ce(6)];
+end
+function zr=slovetheta(the,Rid,T,k5step,CCO,CO2,CCO2)
+thev=the(1);
+theCOa=the(2);
+theO2a=the(3);
+theOa=the(4);
+theCO2a=the(5);
+k1=k5step(1);
+kr1=k5step(2);
+k2=k5step(3);
+kr2=k5step(4);
+k3=k5step(5);
+kr3=k5step(6);
+k4=k5step(7);
+kr4=k5step(8);
+k5=k5step(9);
+kr5=k5step(10);
+r1=k1*thev*Rid*T.*CCO-kr1*theCOa;
+r2=k2*thev*Rid*T.*CO2-kr2*theO2a;
+r3=k3*theO2a.*thev-kr3*theOa.^2;
+r4=k4*theCOa.*theOa-kr4*thev.*theCO2a;
+r5=k5*theCO2a-kr5*thev*Rid*T.*CCO2;
+zr(1)=1-thev-theCOa-theO2a-theOa-theCO2a;
+zr(2)=r1-r4;
+zr(3)=r2-r3;
+zr(4)=2*r3-r4;
+zr(5)=r4-r5;
+end

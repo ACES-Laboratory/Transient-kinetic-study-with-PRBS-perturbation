@@ -1,0 +1,22 @@
+function error=objlqdp(kfit,diffz,Di,QT,mc,Hb,CT,T,P,QS,void,dp,n,tspan,Rid,COinput,O2input,CO2input,yCO2,yCO,yO2,x05step,Cexp,Kr)
+k5step=[kfit(1:7),NaN,kfit(8:9)];
+Ct=kfit(10);
+k5step(1)=k5step(1)/10^5;
+k5step(3)=k5step(3)/10^5;
+k5step(10)=k5step(10)/10^5;
+k5step(8)=k5step(7)*k5step(1)/k5step(2)*k5step(9)/k5step(10)*sqrt(k5step(3)/k5step(4)*k5step(5)/k5step(6)/Kr);
+options=odeset('RelTol',1e-5);
+[ts,Cpro]=ode23tb(@(t,C)odefun5step(t,C,diffz,Di,QT,mc,Hb,CT,T,P,QS,void,dp,n,tspan,Rid,COinput,O2input,CO2input,k5step,Ct,yCO2,yCO,yO2),tspan,x05step,options);
+Cprofile=[COinput',Cpro(:,1:n-1),O2input',Cpro(:,n:2*n-2),CO2input',Cpro(:,2*n-1:end)];
+i=1:n;
+CCO=Cprofile(:,i);
+CO2=Cprofile(:,i+1*n);
+CCO2=Cprofile(:,i+2*n);
+Cm=max(Cexp,[],"all");
+WCO=Cm/max(Cexp(:,1));
+WO2=Cm/max(Cexp(:,2));
+WCO2=Cm/max(Cexp(:,3));
+Cfit=[WCO*pchip(ts,CCO(:,n),tspan);WO2*pchip(ts,CO2(:,n),tspan);WCO2*pchip(ts,CCO2(:,n),tspan);WCO*diff(pchip(ts,CCO(:,n),tspan));WO2*diff(pchip(ts,CO2(:,n),tspan));WCO2*diff(pchip(ts,CCO2(:,n),tspan));];
+Cfite=[WCO*Cexp(:,1);WO2*Cexp(:,2);WCO2*Cexp(:,3);WCO*diff(Cexp(:,1));WO2*diff(Cexp(:,2));WCO2*diff(Cexp(:,3))];
+error=Cfit-Cfite;
+end
