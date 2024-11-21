@@ -49,7 +49,7 @@ r3=k3*theO2a.*thev-kr3*theOa.^2;
 r4=k4*theCOa.*theOa-kr4*thev.*theCO2a;
 r5=k5*theCO2a-kr5*thev*Rid*T.*CCO2;
 %
-dCdt=zeros(length(C)-3,1);
+dCdt=zeros(length(C),1);
 i=2;
 dCdt(i-1)=DLCO(i)*1/diffz^2*(CCO(i+1)-2*CCO(i)+CCO(i-1))-us(i)/void*(CCO(i+1)-CCO(i-1))/2/diffz-CCO(i)/void*us(i)/(CT-CCO(i)-CCO2(i)-CO2(i))*(CCO(i+1)-CCO(i-1)+CCO2(i+1)-CCO2(i-1)+CO2(i+1)-CO2(i-1))/2/diffz-(1)/void*densb*r1(i);
 dCdt(i-1+n-1)=DLO2(i)*1/diffz^2*(CO2(i+1)-2*CO2(i)+CO2(i-1))-us(i)/void*(CO2(i+1)-CO2(i-1))/2/diffz-CO2(i)/void*us(i)/(CT-CCO(i)-CCO2(i)-CO2(i))*(CCO(i+1)-CCO(i-1)+CCO2(i+1)-CCO2(i-1)+CO2(i+1)-CO2(i-1))/2/diffz-(1)/void*densb*r2(i);
